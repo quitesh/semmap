@@ -1,8 +1,8 @@
-# `@quite/semmap` — Extraction Plan
+# `@quitesh/semmap` — Extraction Plan
 
 **Companion to:** `docs/superpowers/specs/2026-05-28-semmap-design.md`
 **Date:** 2026-05-28
-**Target:** publish `@quite/semmap@0.1.0` and migrate `quite-app` to consume it.
+**Target:** publish `@quitesh/semmap@0.1.0` and migrate `quite-app` to consume it.
 
 This plan is phased and file-by-file. Each phase lists rationale, files
 touched (absolute paths), verification command, and dependencies. The repo at
@@ -33,7 +33,7 @@ quite-app — confirmed earlier).
 - `/home/sauyon/devel/semmap/package.json`
   ```json
   {
-    "name": "@quite/semmap",
+    "name": "@quitesh/semmap",
     "version": "0.1.0",
     "description": "Semantic keystroke routing engine: keymap → semantic action → per-scope remap → handler.",
     "type": "module",
@@ -82,7 +82,7 @@ quite-app — confirmed earlier).
 - `/home/sauyon/devel/semmap/src/presets/emacs.ts` — empty stub (`export {}`); populated in phase 2.
 
 No combined `src/presets/index.ts` barrel — the two presets ship as separate
-subpath exports (`@quite/semmap/presets/vim`, `@quite/semmap/presets/emacs`)
+subpath exports (`@quitesh/semmap/presets/vim`, `@quitesh/semmap/presets/emacs`)
 per the design doc. Stubbing the files now lets the `exports` map in
 `package.json` resolve cleanly during the bootstrap build.
 
@@ -297,7 +297,7 @@ emit the same strings as today.
   modes / scopes around them.
 
 - No combined `presets/index.ts` barrel — `vimGrammar` is reached via
-  `@quite/semmap/presets/vim`, `emacsGrammar` via `@quite/semmap/presets/emacs`.
+  `@quitesh/semmap/presets/vim`, `emacsGrammar` via `@quitesh/semmap/presets/emacs`.
   The two subpath exports declared in phase 1's `package.json` are the only
   way to import them.
 - `src/index.ts`: barrel re-exports for `KeyboardEngine`, `ScopeStack`,
@@ -332,7 +332,7 @@ pnpm run build       # passes
 ## Phase 4: Port the tests
 
 **Rationale.** The library needs its own test surface so regressions inside
-`@quite/semmap` are caught before publish. Filter quite-app tests to the
+`@quitesh/semmap` are caught before publish. Filter quite-app tests to the
 engine-internals slice; quite-app-specific tests stay home.
 
 ### Tests that port (copy → adapt imports)
@@ -396,13 +396,13 @@ local-path / linked install is cheap.
 
 ### 5a. Wire the package as a local file dependency (temporary)
 
-Until phase 7 publish, add `@quite/semmap` to `quitesh/package.json` as
-`"@quite/semmap": "file:../../semmap"`. After publish, the user swaps it for
+Until phase 7 publish, add `@quitesh/semmap` to `quitesh/package.json` as
+`"@quitesh/semmap": "file:../../semmap"`. After publish, the user swaps it for
 `^0.1.0`.
 
 ```sh
 # in /home/sauyon/devel/quite-app
-pnpm add -F quitesh @quite/semmap@file:../../semmap
+pnpm add -F quitesh @quitesh/semmap@file:../../semmap
 ```
 
 ### 5b. Rewrite imports
@@ -413,26 +413,26 @@ specifiers).
 
 | File | Rewrite |
 |---|---|
-| `quitesh/src/keyboardEngine.ts` | DELETE — re-export from `@quite/semmap` if anything still imports the local path; ideally delete and update consumers |
+| `quitesh/src/keyboardEngine.ts` | DELETE — re-export from `@quitesh/semmap` if anything still imports the local path; ideally delete and update consumers |
 | `quitesh/src/modeRegistry.ts` | DELETE (or thin re-export shim) |
 | `quitesh/src/layoutMap.ts` | DELETE (or re-export shim if needed for layout-settings UI) |
 | `quitesh/src/keyboard/keymap.ts` | DELETE |
 | `quitesh/src/keyboard/scopeStack.ts` | DELETE |
 | `quitesh/src/keyboard/dispatcher.ts` | DELETE |
 | `quitesh/src/keyboard/engineKeyEvent.ts` | DELETE |
-| `quitesh/src/presets/vim.ts` | Replace with thin adapter: import `vimGrammar` from `@quite/semmap/presets/vim`, compose the `Mode` graph quite-app currently expects on top of it |
-| `quitesh/src/presets/emacs.ts` | Same shape: import `emacsGrammar` from `@quite/semmap/presets/emacs`, layer `DEFAULT_BINDINGS` and `C-x` pane bindings on top |
+| `quitesh/src/presets/vim.ts` | Replace with thin adapter: import `vimGrammar` from `@quitesh/semmap/presets/vim`, compose the `Mode` graph quite-app currently expects on top of it |
+| `quitesh/src/presets/emacs.ts` | Same shape: import `emacsGrammar` from `@quitesh/semmap/presets/emacs`, layer `DEFAULT_BINDINGS` and `C-x` pane bindings on top |
 
 Files whose source stays in quite-app but import from the deleted modules:
 
 | File | Old import → New |
 |---|---|
-| `quitesh/src/CommandBlockBody.tsx` | `from './modeRegistry'` → `from '@quite/semmap'` |
-| `quitesh/src/resolveBindingsForEngineMode.ts` | `from './modeRegistry'` → `from '@quite/semmap'` |
-| `quitesh/src/buildKeybindingPreset.ts` | `from './modeRegistry'`, `from './presets/vim'`, `from './presets/emacs'` → mix of `@quite/semmap` + local preset adapters |
-| `quitesh/src/Settings.tsx`, `paneActions.ts`, `useLayoutObserver.ts`, `PaneBody.tsx`, `blockBrowserRemaps.ts`, `KeyDebugOverlay.tsx`, `useKeyboardHandler.ts`, `AppKeyboardScope.tsx`, `KeyboardProvider.tsx`, `InputBar.tsx`, `HistorySearchKeyboardScope.tsx`, `ModalKeyboardScopes.tsx`, `CommandPaletteKeyboardScope.tsx`, `RoverKeyboardScope.tsx`, `keybindings.ts`, `PaneKeyboardScope.tsx`, `InputScope.tsx`, `BlockExpandedKeyboardScope.tsx`, `App.tsx`, `keyboard/useKeyboardConflicts.ts`, `keyboard/shellEnginePostKey.ts`, `plugins/pluginScopes.ts`, `settings/KeyboardLayoutTab.tsx`, `settings/KeybindingsTab.tsx`, `terminal/TerminalKeyboardScope.tsx`, `terminal/TerminalView.tsx`, `cm/vimNormalGuard.ts` | `from './keyboardEngine'` / `from './modeRegistry'` / `from './keyboard/keymap'` / `from './keyboard/scopeStack'` / `from './keyboard/dispatcher'` / `from './keyboard/engineKeyEvent'` / `from './layoutMap'` → `from '@quite/semmap'` (single barrel — see design doc for the exported surface) |
+| `quitesh/src/CommandBlockBody.tsx` | `from './modeRegistry'` → `from '@quitesh/semmap'` |
+| `quitesh/src/resolveBindingsForEngineMode.ts` | `from './modeRegistry'` → `from '@quitesh/semmap'` |
+| `quitesh/src/buildKeybindingPreset.ts` | `from './modeRegistry'`, `from './presets/vim'`, `from './presets/emacs'` → mix of `@quitesh/semmap` + local preset adapters |
+| `quitesh/src/Settings.tsx`, `paneActions.ts`, `useLayoutObserver.ts`, `PaneBody.tsx`, `blockBrowserRemaps.ts`, `KeyDebugOverlay.tsx`, `useKeyboardHandler.ts`, `AppKeyboardScope.tsx`, `KeyboardProvider.tsx`, `InputBar.tsx`, `HistorySearchKeyboardScope.tsx`, `ModalKeyboardScopes.tsx`, `CommandPaletteKeyboardScope.tsx`, `RoverKeyboardScope.tsx`, `keybindings.ts`, `PaneKeyboardScope.tsx`, `InputScope.tsx`, `BlockExpandedKeyboardScope.tsx`, `App.tsx`, `keyboard/useKeyboardConflicts.ts`, `keyboard/shellEnginePostKey.ts`, `plugins/pluginScopes.ts`, `settings/KeyboardLayoutTab.tsx`, `settings/KeybindingsTab.tsx`, `terminal/TerminalKeyboardScope.tsx`, `terminal/TerminalView.tsx`, `cm/vimNormalGuard.ts` | `from './keyboardEngine'` / `from './modeRegistry'` / `from './keyboard/keymap'` / `from './keyboard/scopeStack'` / `from './keyboard/dispatcher'` / `from './keyboard/engineKeyEvent'` / `from './layoutMap'` → `from '@quitesh/semmap'` (single barrel — see design doc for the exported surface) |
 | `quitesh/src/__tests__/*.test.ts(x)` and `quitesh/src/keyboard/__tests__/*.test.ts(x)` that stay in quite-app | Same rewrite |
-| `quitesh/src/__tests__/keyboardTestUtils.tsx` | Imports rewritten to `@quite/semmap` |
+| `quitesh/src/__tests__/keyboardTestUtils.tsx` | Imports rewritten to `@quitesh/semmap` |
 
 Use a single-pass `find … -exec` or `grep -rl … | xargs sed` for the bulk
 rewrites; check the diff before committing.
@@ -534,7 +534,7 @@ Search quite-app for `passToInput`, `passToTerminal`, `registerPassTarget`,
 
 `keybindings.ts` references `vim.delete`, `vim.change`, `vim.yank`,
 `action.universalArgument` as string literals. Keep them unchanged (defaults
-match) — *or* import `Actions` from `@quite/semmap` and reference
+match) — *or* import `Actions` from `@quitesh/semmap` and reference
 `Actions.OPERATOR_DELETE` etc. The first option requires zero changes; the
 second is more correct long-term. Defer to follow-up (flagged in design doc).
 
@@ -596,8 +596,8 @@ pnpm publish --access public
 
 After publish, **before tagging**:
 
-1. Swap quite-app's `"@quite/semmap": "file:../../semmap"` for
-   `"@quite/semmap": "^0.1.0"`. Run `pnpm install`, `pnpm -F quitesh test`,
+1. Swap quite-app's `"@quitesh/semmap": "file:../../semmap"` for
+   `"@quitesh/semmap": "^0.1.0"`. Run `pnpm install`, `pnpm -F quitesh test`,
    `pnpm -F quitesh test:e2e` to confirm parity with the registry artifact.
    If the test suite passes against the local-path package but fails against
    the published one, something didn't make it into the npm tarball — fix
@@ -610,7 +610,7 @@ After publish, **before tagging**:
 **Verification.**
 
 ```sh
-npm view @quite/semmap@0.1.0       # confirms the package landed
+npm view @quitesh/semmap@0.1.0       # confirms the package landed
 cd /home/sauyon/devel/quite-app
 pnpm -F quitesh test               # passes against the registry artifact
 pnpm -F quitesh test:e2e           # ditto

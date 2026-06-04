@@ -1,4 +1,4 @@
-# @quite/semmap
+# @quitesh/semmap
 
 Semantic keystroke routing engine: keymap → semantic action → per-scope remap → handler.
 
@@ -10,14 +10,14 @@ config, and per-app dispatch policy are all consumer concerns.
 ## Install
 
 ```sh
-pnpm add @quite/semmap
+pnpm add @quitesh/semmap
 ```
 
 ## Minimal usage
 
 ```ts
-import { KeyboardEngine, ScopeStack, Dispatcher } from '@quite/semmap'
-import { vimGrammar } from '@quite/semmap/presets/vim'
+import { KeyboardEngine, ScopeStack, Dispatcher } from '@quitesh/semmap'
+import { vimGrammar } from '@quitesh/semmap/presets/vim'
 
 const stack = new ScopeStack()
 stack.pushOrUpdate({

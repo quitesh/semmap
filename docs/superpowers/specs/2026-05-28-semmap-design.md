@@ -1,4 +1,4 @@
-# `@quite/semmap` — Design
+# `@quitesh/semmap` — Design
 
 **Status:** approved, pending implementation.
 **Author:** sauyon
@@ -12,13 +12,13 @@ contributors don't relitigate the framing. Implementation plan lives at
 
 Extract the keystroke-routing engine and scope stack currently embedded in
 `quite-app` into a standalone, pure-TypeScript library published as
-`@quite/semmap` so both `quite-app` and the planned `zen-keys` (a
+`@quitesh/semmap` so both `quite-app` and the planned `zen-keys` (a
 keyboard-driven Firefox/Zen fork) can consume one implementation instead of
 forking copies.
 
 ## Audience
 
-`@quite/semmap` consumers are downstream JS apps that want layered, scope-aware
+`@quitesh/semmap` consumers are downstream JS apps that want layered, scope-aware
 keystroke routing with vim/emacs grammar built in. The library is not a UI
 framework — it's a routing core. React glue, focus management, action
 catalogs, YAML config, and per-app dispatch policy all stay in the consumer.
@@ -45,7 +45,7 @@ snapshot/restore (`peekProcessKey`) for parity tests.
 
 ### Extracted files
 
-From `quite-app/quitesh/src/` into `@quite/semmap/src/`:
+From `quite-app/quitesh/src/` into `@quitesh/semmap/src/`:
 
 - `keyboardEngine.ts` — grammar state machine
 - `modeRegistry.ts` — `KeyEvent`, `normalizeKeyEvent`, layout-aware base-key resolution (the `Mode`/`ModeId` types are vestigial after the KeymapSource refactor; carry along for API parity, prune later)
@@ -55,12 +55,12 @@ From `quite-app/quitesh/src/` into `@quite/semmap/src/`:
 - `keyboard/engineKeyEvent.ts` — `setEngineKeyResult` / `getEngineKeyResult`
 - `layoutMap.ts` — keyboard layout resolution table
 
-Into `@quite/semmap/src/presets/`:
+Into `@quitesh/semmap/src/presets/`:
 
 - `presets/vim.ts` → exported as `vimGrammar`
 - `presets/emacs.ts` → exported as `emacsGrammar`
 
-Tests that go with them (port to `@quite/semmap`):
+Tests that go with them (port to `@quitesh/semmap`):
 
 - `keyboard/__tests__/scopeStack.test.ts`
 - `keyboard/__tests__/dispatcher.test.ts`
@@ -146,10 +146,10 @@ when registering remaps, not the bare strings, so the naming doesn't leak.
 
 ### 3. Ship preset grammar fragments
 
-`presets/vim.ts` and `presets/emacs.ts` move into `@quite/semmap` under
-separate subpath exports: `@quite/semmap/presets/vim` exports `vimGrammar`,
-`@quite/semmap/presets/emacs` exports `emacsGrammar`. No combined
-`@quite/semmap/presets` barrel — consumers import only the preset they use,
+`presets/vim.ts` and `presets/emacs.ts` move into `@quitesh/semmap` under
+separate subpath exports: `@quitesh/semmap/presets/vim` exports `vimGrammar`,
+`@quitesh/semmap/presets/emacs` exports `emacsGrammar`. No combined
+`@quitesh/semmap/presets` barrel — consumers import only the preset they use,
 which keeps tree-shaking honest from day one and avoids a meta-export that
 just re-exports two unrelated grammars. Quite-app's `buildKeybindingPreset.ts`
 stays in quite-app since it weaves in YAML config and shell-chord overrides
@@ -179,7 +179,7 @@ import {
   subscribeLayoutMap,
   addLayoutSource,
   QWERTY_MAP,
-} from '@quite/semmap'
+} from '@quitesh/semmap'
 
 import type {
   KeyEvent,
@@ -204,10 +204,10 @@ import type {
   // Vestigial parity surface; see "Open follow-ups"
   Mode,
   ModeId,
-} from '@quite/semmap'
+} from '@quitesh/semmap'
 
-import { vimGrammar } from '@quite/semmap/presets/vim'
-import { emacsGrammar } from '@quite/semmap/presets/emacs'
+import { vimGrammar } from '@quitesh/semmap/presets/vim'
+import { emacsGrammar } from '@quitesh/semmap/presets/emacs'
 ```
 
 ### Discriminated unions
@@ -342,10 +342,10 @@ These ARE the default literal action id strings. Defaults map `{d → Actions.OP
 ### `vimGrammar` / `emacsGrammar`
 
 ```ts
-// @quite/semmap/presets/vim
+// @quitesh/semmap/presets/vim
 function vimGrammar(): { normal: Keymap; insert: Keymap; opPending: Keymap }
 
-// @quite/semmap/presets/emacs
+// @quitesh/semmap/presets/emacs
 function emacsGrammar(): Keymap
 ```
 
@@ -390,7 +390,7 @@ survive restarts wire their own serialization:
 - Subscribe via `subscribeLayoutMap(cb)`, debounce in the callback, and
   write to the consumer's store (IndexedDB, localStorage, file, etc.).
 
-This keeps `@quite/semmap` free of any DOM/storage dependencies and lets
+This keeps `@quitesh/semmap` free of any DOM/storage dependencies and lets
 each consumer pick the storage backend that fits its host environment.
 
 ### Operator + motion emission timing (behavioral pin)
@@ -400,7 +400,7 @@ When the engine resolves a key to a `{type:'operator'}` `BindingEntry`, it enter
 ## Consumers
 
 - **quite-app** (existing): replaces `./keyboardEngine`, `./modeRegistry`,
-  `./keyboard/*` imports with `@quite/semmap`. Terminal pass-target
+  `./keyboard/*` imports with `@quitesh/semmap`. Terminal pass-target
   re-dispatch becomes a consumer-side branch in `App.tsx`'s capture handler.
 - **zen-keys** (planned): consumes the package fresh.
 
