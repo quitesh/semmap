@@ -1,0 +1,20 @@
+{
+  "name": "@quitesh/semmap",
+  "version": "0.1.0",
+  "exports": {
+    ".": "./src/index.ts",
+    "./presets/vim": "./src/presets/vim.ts",
+    "./presets/emacs": "./src/presets/emacs.ts"
+  },
+  "publish": {
+    "exclude": [
+      "**/__tests__/**",
+      "**/*.test.ts",
+      "dist",
+      "vitest.config.ts",
+      "tsconfig.json",
+      "pnpm-lock.yaml",
+      "mise.toml"
+    ]
+  }
+}
