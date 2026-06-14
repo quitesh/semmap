@@ -1,2 +1,26 @@
 [tools]
 pnpm = "11.4.0"
+
+[env]
+# Put locally-installed dev binaries (tsc, vitest, jsr) on PATH for tasks.
+_.path = ["node_modules/.bin"]
+
+[tasks.build]
+description = "Compile TypeScript to dist/"
+run = "tsc -p tsconfig.json"
+
+[tasks.test]
+description = "Run the test suite once"
+run = "vitest run"
+
+[tasks.test-watch]
+description = "Run tests in watch mode"
+run = "vitest"
+
+[tasks.typecheck]
+description = "Type-check without emitting"
+run = "tsc --noEmit"
+
+[tasks.publish-jsr]
+description = "Publish to JSR (jsr.io); needs an interactive terminal for auth"
+run = "jsr publish"
