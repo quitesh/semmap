@@ -92,9 +92,9 @@ keymap) are the common case; a new keymap on a modal/menu scope is a smell.
 
 ### `acceptsLeadingCount`
 
-When the topmost active scope sets this, leading digit keys accumulate as a
-count prefix (`3j`). Vim normal/visual scopes set it; emacs and insert-style
-scopes leave it unset.
+When any active scope at or above the `claimsInput` floor sets this, leading
+digit keys accumulate as a count prefix (`3j`). Vim normal/visual scopes set it;
+emacs and insert-style scopes leave it unset.
 
 ## Engine
 
@@ -104,8 +104,9 @@ keymaps from a `KeymapSource` (`ScopeStack` is the canonical one). It owns:
 - **IME gate** — `e.isComposing` is checked at `processKey` entry and returns
   `{ type: 'composing' }` immediately, so composition keystrokes never route.
 - **Grammar overlays** — at most one active at a time:
-  - *operator-pending* — a vim `operator` binding captures the next key as a
-    motion; the two combine into one `action` result.
+  - *operator-pending* — a vim `operator` binding captures the active keymap;
+    a following `motion` key combines with the operator into one `action`
+    result (a bound non-motion key re-resolves against the base keymap).
   - *prefix-chord* — a `prefix` binding captures a continuation keymap; the
     next key resolves against it, with a timeout (default 1 s).
 - **Count / universal-argument** accumulation.
@@ -132,6 +133,7 @@ interface EngineResult {
   action?: string
   motion?: string
   count?: number
+  modeChanged?: ModeId      // vestigial; never populated by the engine
   pendingDisplay?: string   // for a status line: "3d", "C-x ", …
   cancelledDisplay?: string // for chordCancelled: keys pressed, e.g. "C-x q"
 }
@@ -172,13 +174,17 @@ The vim preset binds operators, motions, and counts as grammar entries the
 engine assembles:
 
 - An `operator` binding (`d`, `c`, `y`) puts the engine in operator-pending
-  state and emits `{ type: 'pending' }`.
-- The next key that resolves to a `motion` binding produces a single
+  state and emits `{ type: 'pending' }`. The overlay captures the full active
+  keymap, so the next key is resolved against everything bound there — not a
+  motion-only table.
+- A next key that resolves to a `motion` binding produces a single
   `{ type: 'action', action, motion, count }`, combining the operator's
   resolved action id, the motion name, and the product of the operator and
   motion counts (`2d3w` → count 6).
-- A non-motion next key (other than `Esc` / `C-g`) cancels the operator and
-  emits `unmatched`.
+- A next key that is unbound in the active keymap cancels the operator and
+  emits `unmatched`. A *bound* non-motion key (e.g. `i → vim.enterInsert`)
+  clears the operator-pending overlay and is re-resolved against the base
+  keymap, producing its own action.
 
 The operator → action mapping is configurable. The exported `Actions`
 constants *are* the default literal action ids, so a consumer overriding
