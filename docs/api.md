@@ -73,6 +73,7 @@ interface EngineResult {
   action?: string
   motion?: string
   count?: number
+  modeChanged?: ModeId       // vestigial; never populated by the engine
   pendingDisplay?: string    // status line: "3d", "C-x ", …
   cancelledDisplay?: string  // chordCancelled: keys pressed, e.g. "C-x q"
 }
@@ -113,7 +114,7 @@ class KeyboardEngine {
 }
 
 interface EngineState {
-  currentMode: ModeId
+  currentMode: ModeId      // vestigial; always '' (see "Vestigial types")
   pendingDisplay: string   // "3d", "C-x ", …
 }
 ```
@@ -226,19 +227,27 @@ binds on top).
 ## `defineSemanticActionRemaps` / `isSemanticActionId`
 
 ```ts
-function defineSemanticActionRemaps(remaps: SemanticActionRemaps): ActionRemap
-function isSemanticActionId(id: string): id is SemanticActionId
+function defineSemanticActionRemaps(
+  entries: readonly (readonly [SemanticActionId, HandlerActionId])[],
+): SemanticActionRemaps
+function isSemanticActionId(action: ActionId): action is SemanticActionId
+
+interface SemanticActionRemaps {
+  remaps: ActionRemap
+}
 ```
 
-`defineSemanticActionRemaps` builds the semantic → concrete routing table a
-scope installs as its `remaps`. `isSemanticActionId` is the type guard for
-distinguishing semantic ids from concrete handler ids.
+`defineSemanticActionRemaps` builds a semantic → concrete routing table from
+`[semanticId, handlerId]` tuples, returning a `SemanticActionRemaps` wrapper.
+Install its `.remaps` as a scope's `remaps` field (typed `ActionRemap`).
+`isSemanticActionId` is the type guard for distinguishing semantic ids from
+concrete handler ids.
 
 ## `setEngineKeyResult` / `getEngineKeyResult`
 
 ```ts
-function setEngineKeyResult(e: KeyEvent | KeyboardEvent, result: EngineResult): void
-function getEngineKeyResult(e: KeyEvent | KeyboardEvent): EngineResult | undefined
+function setEngineKeyResult(e: KeyboardEvent, result: EngineResult): void
+function getEngineKeyResult(e: KeyboardEvent): EngineResult | undefined
 ```
 
 Caches the engine's verdict on the event itself (via a private symbol property)
@@ -248,9 +257,13 @@ saving CPU and preventing state drift when multiple handlers fire on one event.
 ## Key normalization
 
 ```ts
-function normalizeKeyEvent(e: KeyboardEvent): KeyEvent  // → engine-facing KeyEvent
+function normalizeKeyEvent(e: KeyEvent): string | null  // canonical key string, e.g. "C-a"; null for bare modifiers
 function resolveBaseKey(e: KeyEvent): string            // layout-aware base-key string
 ```
+
+The consumer builds a `KeyEvent` from a DOM `KeyboardEvent` and feeds it to the
+engine; `normalizeKeyEvent` is the same canonicalization the engine applies
+internally, exposed for consumers that need the binding string directly.
 
 ## Layout map
 
