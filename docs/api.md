@@ -48,8 +48,6 @@ import type {
   EngineResultLike,
   LayoutMap,
   LayoutSource,
-  Mode,       // vestigial; carried for parity, prune later
-  ModeId,     // vestigial; carried for parity, prune later
 } from '@quitesh/semmap'
 
 import { vimGrammar } from '@quitesh/semmap/presets/vim'
@@ -73,7 +71,6 @@ interface EngineResult {
   action?: string
   motion?: string
   count?: number
-  modeChanged?: ModeId       // vestigial; never populated by the engine
   pendingDisplay?: string    // status line: "3d", "C-x ", …
   cancelledDisplay?: string  // chordCancelled: keys pressed, e.g. "C-x q"
 }
@@ -114,7 +111,6 @@ class KeyboardEngine {
 }
 
 interface EngineState {
-  currentMode: ModeId      // vestigial; always '' (see "Vestigial types")
   pendingDisplay: string   // "3d", "C-x ", …
 }
 ```
@@ -282,9 +278,3 @@ const QWERTY_MAP: Readonly<LayoutMap>
 type LayoutMap = Record<string, string>   // KeyboardEvent.code → character
 interface LayoutSource { name: string; load(): Promise<LayoutMap> | LayoutMap }
 ```
-
-## Vestigial types
-
-`Mode` and `ModeId` (from the pre-`KeymapSource` engine) are exported for API
-parity but are no longer load-bearing. They are slated for removal once
-consumers confirm they reference neither; new code should not depend on them.

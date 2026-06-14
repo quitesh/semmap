@@ -23,7 +23,7 @@ export type {
   KeymapConflict,
 } from './keyboardEngine.js'
 
-export type { KeyEvent, Mode, ModeId } from './modeRegistry.js'
+export type { KeyEvent } from './modeRegistry.js'
 
 export type {
   BindingEntry,

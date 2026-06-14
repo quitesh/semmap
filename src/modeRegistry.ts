@@ -2,8 +2,6 @@ import { resolveCode } from './layoutMap.js'
 
 // ── Types ────────────────────────────────────────────────────────────
 
-export type ModeId = string
-
 // TODO: Remove this duplicate of BindingEntry from keyboard/keymap.ts. The two
 // definitions exist for legacy reasons; any change to the variant set MUST be
 // applied to both, or downstream consumers will see one definition win at the
@@ -18,20 +16,6 @@ export type BindingEntry =
    */
   | { type: 'prefix'; keymap: Map<string, BindingEntry> }
   | { type: 'passthrough' }
-
-export interface Mode {
-  id: ModeId
-  /** `transient` modes (e.g. operator-pending) are ephemeral overlays a
-   *  consumer (the engine) may auto-pop on no-match. The registry itself
-   *  doesn't act on this — it's metadata for callers. */
-  type: 'persistent' | 'transient'
-  keymap: Map<string, BindingEntry>
-}
-
-export interface MatchResult {
-  entry: BindingEntry
-  modeId: ModeId
-}
 
 // ── Key normalization ────────────────────────────────────────────────
 
