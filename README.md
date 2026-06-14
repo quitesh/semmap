@@ -35,4 +35,5 @@ window.addEventListener('keydown', (e) => {
 })
 ```
 
-See `docs/superpowers/specs/2026-05-28-semmap-design.md` for the full API surface.
+See [`docs/architecture.md`](docs/architecture.md) for how the engine works and
+[`docs/api.md`](docs/api.md) for the full API surface.
