@@ -133,7 +133,6 @@ interface EngineResult {
   action?: string
   motion?: string
   count?: number
-  modeChanged?: ModeId      // vestigial; never populated by the engine
   pendingDisplay?: string   // for a status line: "3d", "C-x ", …
   cancelledDisplay?: string // for chordCancelled: keys pressed, e.g. "C-x q"
 }

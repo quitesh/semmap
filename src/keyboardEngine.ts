@@ -1,4 +1,4 @@
-import { type BindingEntry, type KeyEvent, type ModeId, normalizeKeyEvent } from './modeRegistry.js'
+import { type BindingEntry, type KeyEvent, normalizeKeyEvent } from './modeRegistry.js'
 
 export type { BindingEntry }
 
@@ -50,7 +50,6 @@ export interface EngineResult {
   action?: string
   motion?: string
   count?: number
-  modeChanged?: ModeId
   pendingDisplay?: string
   /** For `chordCancelled`: space-joined keys the user actually pressed
    *  (prefix + unbound continuation, e.g. `"C-x q"`) so the caller can
@@ -59,7 +58,6 @@ export interface EngineResult {
 }
 
 export interface EngineState {
-  currentMode: ModeId
   pendingDisplay: string
 }
 
@@ -79,7 +77,7 @@ export interface EngineState {
  */
 export interface KeymapConflict {
   /** Engine mode the conflict was found in (e.g. `emacs`, `insert`, `prefix:C-x@emacs`). */
-  modeId: ModeId
+  modeId: string
   /** Path of normalised key strings from the parent persistent mode to the conflict node. */
   path: readonly string[]
   /** Actions bound to that path as a leaf binding. */
@@ -478,7 +476,6 @@ export class KeyboardEngine {
 
   peekState(): EngineState {
     return {
-      currentMode: '',
       pendingDisplay: this.buildPendingDisplay(),
     }
   }
@@ -486,7 +483,6 @@ export class KeyboardEngine {
   getState(): EngineState {
     if (this.cachedState) return this.cachedState
     this.cachedState = {
-      currentMode: '',
       pendingDisplay: this.buildPendingDisplay(),
     }
     return this.cachedState
@@ -552,7 +548,6 @@ export class KeyboardEngine {
     if (this.suppressNotify) return
 
     const newState = {
-      currentMode: '',
       pendingDisplay: this.buildPendingDisplay(),
     }
 
