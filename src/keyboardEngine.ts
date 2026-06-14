@@ -23,6 +23,8 @@ export const Actions = {
  *  `iterateKeymaps()` on every key press and walks top-down, stopping
  *  at the first binding. */
 export interface KeymapSource {
+  /** Yield the active keymaps top-of-stack first; the engine walks them in
+   *  order and stops at the first matching binding. */
   iterateKeymaps(): Iterable<Map<string, BindingEntry>>
   /** True when the current context should accumulate leading digit counts
    *  (vim-normal, vim-visual, vim-visual-line). False for emacs and
@@ -157,6 +159,13 @@ export class KeyboardEngine {
   private readonly operatorActions: Record<string, string>
   private readonly universalArgAction: string
 
+  /**
+   * Construct an engine bound to a keymap source.
+   *
+   * @param source - Keymap stack the engine walks on every key press.
+   * @param options - Optional conflict list, chord timeout, and overrides for
+   * the operator / universal-argument action ids.
+   */
   constructor(
     source: KeymapSource,
     options: {

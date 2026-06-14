@@ -7,6 +7,11 @@ export type KeyStr = string
 /** Generic action id. Prefer narrower aliases at keyboard routing boundaries. */
 export type ActionId = string
 
+/**
+ * The fixed-string semantic action ids for text-input editing. Kept as a
+ * separate union so {@link SemanticActionId} can accept them alongside the
+ * open-ended `action.*` / `motion:*` template-literal forms.
+ */
 export type SemanticInputActionId =
   | 'input.complete'
   | 'input.completeCycleBack'
@@ -18,6 +23,11 @@ export type SemanticInputActionId =
  */
 export type SemanticActionId = `action.${string}` | SemanticInputActionId | `motion:${string}`
 
+/**
+ * Type guard: true when `action` is a {@link SemanticActionId} (an `action.*`
+ * or `motion:*` id, or one of the fixed `input.*` ids) rather than a concrete
+ * handler action. Use it to decide whether an id still needs remapping.
+ */
 export function isSemanticActionId(action: ActionId): action is SemanticActionId {
   if (!action) return false
   return (
@@ -44,10 +54,25 @@ export type HandlerActionId = ActionId
 /** Semantic action -> concrete handler action routing table. */
 export type ActionRemap = ReadonlyMap<ActionId, HandlerActionId>
 
+/** A built bundle of semantic-action remaps, ready to attach to a scope's `remaps`. */
 export interface SemanticActionRemaps {
+  /** Semantic action → concrete handler action routing table. */
   remaps: ActionRemap
 }
 
+/**
+ * Build a {@link SemanticActionRemaps} bundle from `[semantic, handler]` pairs.
+ * The {@link SemanticActionId} key type makes the table self-documenting and
+ * keeps callers from accidentally remapping concrete handler ids.
+ *
+ * @example
+ * ```ts
+ * const remaps = defineSemanticActionRemaps([
+ *   ["action.cancel", "modal.close"],
+ *   ["action.submit", "form.submit"],
+ * ]);
+ * ```
+ */
 export function defineSemanticActionRemaps(
   entries: readonly (readonly [SemanticActionId, HandlerActionId])[],
 ): SemanticActionRemaps {

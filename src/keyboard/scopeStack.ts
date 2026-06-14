@@ -1,5 +1,6 @@
 import type { ActionId, ActionRemap, HandlerActionId, Keymap, KeymapActionId } from './keymap.js'
 
+/** Arguments passed to a scope {@link HandlerFn} alongside the resolved action. */
 export interface ActionArgs {
   /** Numeric prefix (emacs C-u, vim leading count). */
   count?: number
@@ -7,8 +8,13 @@ export interface ActionArgs {
   motion?: string
 }
 
+/**
+ * A scope action handler. Returns `true` to claim the action (stopping the
+ * walk) or `false` to let the dispatcher keep walking lower scopes.
+ */
 export type HandlerFn = (action: HandlerActionId, args: ActionArgs) => boolean
 
+/** One entry in a {@link ScopeStack}: a keymap layer plus its routing rules. */
 export interface Scope {
   /**
    * Identity for pushOrUpdate. Pushes with an id already on the stack
@@ -92,6 +98,7 @@ export class ScopeStack {
     this.notify()
   }
 
+  /** Remove the scope with the given id, if present. No-op when absent. */
   pop(id: string): void {
     const idx = this.scopes.findIndex((s) => s.id === id)
     if (idx < 0) return
@@ -230,6 +237,7 @@ export class ScopeStack {
     return false
   }
 
+  /** Subscribe to resolution-affecting stack changes. Returns an unsubscribe function. */
   subscribe(cb: () => void): () => void {
     this.subscribers.add(cb)
     return () => {

@@ -1,3 +1,13 @@
+/**
+ * Bundled emacs grammar fragment for {@link @quitesh/semmap!KeyboardEngine}.
+ *
+ * Exposes {@link emacsGrammar}, which returns the engine-relevant emacs
+ * primitives (the `C-u` universal-argument binding, a `C-x` prefix scaffold,
+ * and universal motion / cancel keys) for consumers to layer their own action
+ * catalog on top of. Import via `@quitesh/semmap/presets/emacs`.
+ *
+ * @module
+ */
 import type { BindingEntry, Keymap } from '../keyboard/keymap.js'
 import { Actions } from '../keyboardEngine.js'
 

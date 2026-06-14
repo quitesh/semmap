@@ -7,6 +7,7 @@ import type { ActionArgs, ScopeStack } from './scopeStack.js'
  * but the dispatcher needs a structural view.
  */
 export interface EngineResultLike {
+  /** How the key resolved; only `action` triggers a dispatch. */
   type:
     | 'action'
     | 'passthrough'
@@ -14,8 +15,11 @@ export interface EngineResultLike {
     | 'unmatched'
     | 'composing'
     | 'chordCancelled'
+  /** For `action`: the action id to remap and dispatch. */
   action?: KeymapActionId
+  /** For a vim operator+motion action: the motion id. */
   motion?: string
+  /** Numeric prefix (vim count / emacs universal argument). */
   count?: number
 }
 
@@ -34,8 +38,19 @@ export interface EngineResultLike {
  *   active focus context.
  */
 export class Dispatcher {
+  /**
+   * Construct a dispatcher over a scope stack.
+   *
+   * @param stack - Scope stack walked for remaps and handlers on each dispatch.
+   */
   constructor(private stack: ScopeStack) {}
 
+  /**
+   * Route one {@link EngineResultLike} to a scope handler. For `action`
+   * results, remaps the action and walks the stack for the first claiming
+   * handler, returning whether any claimed it. All other result types are
+   * no-ops that return `false`.
+   */
   dispatch(result: EngineResultLike, _e: KeyboardEvent): boolean {
     switch (result.type) {
       case 'action': {

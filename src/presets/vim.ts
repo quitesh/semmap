@@ -1,3 +1,13 @@
+/**
+ * Bundled vim grammar fragment for {@link @quitesh/semmap!KeyboardEngine}.
+ *
+ * Exposes {@link vimGrammar}, which returns the engine-relevant vim primitives
+ * (motions, operators, simple commands, mode entries) as plain keymaps for
+ * consumers to compose their own modes and scopes around. Import via
+ * `@quitesh/semmap/presets/vim`.
+ *
+ * @module
+ */
 import type { BindingEntry, Keymap } from '../keyboard/keymap.js'
 
 /**

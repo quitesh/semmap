@@ -154,6 +154,11 @@ export function setLayoutMap(map: LayoutMap): void {
 
 // ── Subscriptions ───────────────────────────────────────────────────
 
+/**
+ * Subscribe to learned-layout-map changes. The callback receives a read-only
+ * snapshot on every update (debounce in the consumer if persisting). Returns an
+ * unsubscribe function.
+ */
 export function subscribeLayoutMap(cb: (map: Readonly<LayoutMap>) => void): () => void {
   listeners.add(cb)
   return () => listeners.delete(cb)
