@@ -1,6 +1,6 @@
 {
   "name": "@quitesh/semmap",
-  "version": "0.1.0",
+  "version": "0.1.1",
   "description": "Semantic keystroke routing engine: keymap → semantic action → per-scope remap → handler.",
   "type": "module",
   "main": "./dist/index.js",

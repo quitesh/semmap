@@ -1,0 +1,41 @@
+name: Publish to JSR
+
+# Publishes @quitesh/semmap to JSR (jsr.io) using GitHub Actions OIDC — no
+# secrets or tokens needed, and publishing this way records build provenance.
+# The package must be linked to this repo in its JSR settings (it is).
+#
+# `jsr publish` is version-gated: it skips publishing when jsr.json's version
+# is already on JSR, so this is safe to run on every push to main — a release
+# only happens on the commit that bumps the version in jsr.json.
+
+on:
+  push:
+    branches:
+      - main
+  workflow_dispatch:
+
+jobs:
+  publish:
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      id-token: write # OIDC token: authenticates to JSR and records provenance.
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+
+      - uses: jdx/mise-action@v2 # installs the pnpm version pinned in mise.toml
+
+      - run: pnpm install --frozen-lockfile
+
+      - name: Type-check
+        run: mise run typecheck
+
+      - name: Test
+        run: mise run test
+
+      - name: Publish to JSR
+        run: pnpm exec jsr publish
