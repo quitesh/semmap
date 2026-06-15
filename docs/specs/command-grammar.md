@@ -571,17 +571,22 @@ Adopt the best of Zed's keymap engine, minus its complexity:
 
 How the grammar fits: the recognizer sits above the binding layer; a resolved
 `Command`'s action/operator ids flow through the existing per-scope `remap` then
-handler walk, unchanged. Prefix chords (chord-synthesis) stay keymap structure
-resolved by the binding layer; the grammar owns only the compositional
+handler walk, unchanged. The grammar owns only the compositional
 (operator/motion/count) structure.
 
-## Relationship to the other specs
+**Prefix chords** (emacs-style `C-x C-f`) stay **keymap structure** resolved by
+the binding layer — flat lookups, no counts/operators — built by a `weaveChord`
+construction that weaves a chord into a keymap and is **conflict-checkable at
+build time** (chord-shadow: a prefix shadows a flat binding; fan-out: one key
+bound to two actions). This replaces quite-app's `applyChordToMode` and its
+fragile synthesized `prefix:…@…` id coupling. A prefix continuation is just
+another keymap lookup at a position, so chords and the compositional grammar
+coexist cleanly.
 
-- **chord-synthesis** (static prefix keymaps + conflict detection): emacs-style
-  prefix chords (`C-x C-f`) stay keymap structure (flat lookups, no
-  counts/operators), conflict-checkable at build time; the grammar owns the vim
-  command structure. The two coexist; a prefix continuation is just another
-  keymap lookup at a position. (Exact seam = HP7.)
+## Relationship to other work
+
+- **Prefix chords / `weaveChord`** — the build-time prefix-keymap construction +
+  conflict detection lives in the binding layer; see §Scope/binding resolution.
 - **Local `Mode` cleanup** (interim PR #1058): subsumed. With modes carrying a
   grammar, the synthesized prefix bookkeeping and the `Mode.type` flag are gone.
 - The "grammar reducers" idea is this spec's small case: a reducer = a one-rule
