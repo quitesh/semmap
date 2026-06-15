@@ -600,6 +600,47 @@ coexist cleanly.
 The design is essay-coherent, but these contracts must be pinned before code
 (final red-team). They are slice-1-blocking unless noted.
 
+### Recognizer class (formal)
+
+The recognizer is a **deterministic pushdown recognizer, online over the keystroke
+stream, with zero lookahead**:
+
+- **online / one token per step** — each key triggers exactly one step that
+  *decides and consumes* that key. There is no peek and no buffered token ahead.
+- **zero lookahead** — every decision is a function of `(current configuration =
+  parse stack + finite registers, current key, per-parse-fixed registry)` and
+  nothing else. "LL(1)" is the textbook name for this grammar class, but the "1"
+  is an *offline-parser* artifact (peek-the-token-then-match); here the token is
+  the current input, decided on arrival — so operationally there is **no
+  lookahead**.
+- **deterministic** — `(configuration, key) → a unique transition`, or a
+  dead-end / no-match (→ eat/yield per §Incremental recognizer). **No
+  backtracking, no look-back.**
+- **real-time** — O(grammar-depth) work per key (bounded ε-moves).
+- **pushdown** — the parse stack carries the (shallow) command nesting.
+
+State registers (operator, count, register, captured literals, last-find) are a
+**forward accumulator**. A `keyGuard` that affects *control flow* may read only
+**finite-domain** registers (operator ∈ finite ops; count-in-progress ∈ bool), so
+the guarded grammar **expands to a finite ordinary grammar** — guards add no power.
+Unbounded values (count value, captured char, search pattern) are **data
+attributes synthesized onto the `Command`; they never gate a production.**
+
+**Admissibility — compile-time, rejectable.** With every `keyGuard` expanded over
+its finite register domain, a grammar is admissible iff:
+
+1. **FIRST/FIRST disjoint** — alternatives at every choice share no first-token.
+2. **FIRST/FOLLOW disjoint** — for every nullable element (`count?`, `register?`,
+   `optional`/`repeat`), FIRST(element) ∩ FOLLOW(element) = ∅.
+3. **No left recursion, no nullable cycles** (real-time).
+4. **Guards finite-domain and mutually exclusive / prioritized** at a shared choice.
+5. **No unbounded value gates a production** (data attributes only).
+
+Conditions 1–2 *are* the determinism guarantee: the current key always selects a
+unique branch, so the recognizer never buffers, peeks, or backtracks. A grammar
+that violates them is **rejected at compile time** — not parsed with more
+lookahead. (This is what "LL(1)-ish" should have said.)
+
 ### `acceptableNext` — first-set closure over the parse stack
 
 Returns the first-set **closure over the runtime parse stack**, not one node. From
