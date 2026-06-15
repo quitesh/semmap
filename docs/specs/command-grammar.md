@@ -178,6 +178,68 @@ interface Command {
   **consumer supplies the recorded insert text**, stored alongside. Visual ops
   record selection **geometry**.
 
+## Configuration
+
+"The grammar is the keymap" is an *internal* statement — users still configure a
+flat keymap. Three roles, three artifacts:
+
+- **User** edits a **keymap**: flat `key → semantic action`, per mode/position.
+  This *is* the grammar's terminal rules and is the only thing most users touch
+  (≈ today's YAML). The grammar *structure* (composition) is not user-editable.
+- **Preset author (dev)** defines the **grammar**: the composition (via paradigm
+  helpers) + default terminals + semantic namespaces. Ships as a preset.
+- **App (consumer)** supplies **remaps** (semantic → concrete) and **handlers**
+  (concrete → fn) per mode, exactly as today.
+
+The user keymap overrides/extends the preset's terminals; the preset owns
+composition; the app owns dispatch. So "rebind a key" is a one-line keymap edit,
+never a grammar edit.
+
+### Example — user keymap (config file)
+
+```yaml
+keys:
+  normal:                           # command-start (vim nmap)
+    d: operator.delete
+    w: motion.word
+    j: action.down
+    ctrl+r: action.history-search
+    ctrl+x > ctrl+f: action.palette   # multi-key → a prefix production
+  insert:                           # vim imap
+    ctrl+w: input.kill-word-back
+  normal.operand:                   # operand position (vim omap) — advanced, optional
+    p: textobject.paragraph         # makes `dp` delete a paragraph
+```
+
+`ctrl+r` is just a terminal in normal-mode's grammar; `d` is the `operator.delete`
+terminal the preset's `operatorPending` composes. Most users only ever edit the
+command-start section.
+
+### Example — dev preset (TypeScript)
+
+```ts
+import { mode, operatorPending, group } from '@quitesh/semmap'
+
+export const vimNormal = mode({
+  // composition: <operator> <count? target>; doubling auto-generated per operator
+  grammar: operatorPending({
+    operators: group('operator'),                 // terminals whose id is operator.*
+    target:    group('motion', 'textobject', 'literalMotion'),
+  }),
+  // default terminals (key → semantic id) — the user keymap overrides these
+  terminals: {
+    d: 'operator.delete', c: 'operator.change', y: 'operator.yank',
+    w: 'motion.word',     b: 'motion.back',     $: 'motion.eol',
+    i: 'textobject.inner', a: 'textobject.around',     // then an object-id key
+    f: 'literalMotion.find',                           // then a literal char
+  },
+})
+```
+
+The preset names only **semantic ids**, never app behaviour. The app's mode then
+remaps `operator.delete → editor.deleteRange`,
+`action.history-search → shell.historySearch`, and its handlers do the work.
+
 ## Modes — the mode stack
 
 semmap owns a **stack of modes**. A mode is `{ grammar, remap, handler-refs }` —
