@@ -60,60 +60,73 @@ key → recognizer.step(state, key) → StepResult
         Resolved → structured Command → remap / handler (existing scope walk)
 ```
 
-### Two layers: grammar publishes, binding layer dispatches
+### The grammar is the keymap
 
-The engine is two layers with a one-way interface (validated against Zed's keymap
-engine):
+There is **no separate keymap layer.** The grammar's terminal rules *are* the
+key→meaning map, and a terminal emits a **semantic action id** (`w → motion.word`,
+`d → operator.delete`). Recognition is the grammar; the only thing downstream is
+**dispatch** — the existing per-mode `remap` (semantic → concrete) then `handler`,
+unchanged:
 
-1. **Grammar layer** — the incremental recognizer. The authority on modal state:
-   counts, pending operator, register, composition, dot-repeat. It *publishes
-   selectors* (`mode=operator`, `operator=d`, a pending count).
-2. **Binding layer** — a dumb, declarative, selector-gated dispatch table (the
-   mode stack's layered keymaps, §Modes) that resolves a key to a group/action and
-   knows nothing about composition.
+```
+key → grammar (terminals key→semantic, then compose) → Command{semantic ids}
+    → remap (semantic→concrete, per mode) → handler
+```
 
-Interface: **grammar → publishes selectors → binding layer reads them.** This is
-how Zed handles operator-pending (one keymap, no swap; bindings predicate on
-`vim_mode`/`vim_operator`). It keeps modal state *out* of the binding layer.
-semmap should be richer than Zed here: a typed grammar keeps the count numeric
-and the structure intact, where Zed flattens count to a boolean and uses
-stringly-typed `waiting`/`literal` overrides.
+The grammar **absorbs** the keymap layer of the old `keymap → remap → handler`
+split and adds composition on top; remap and handler stay as they are. Both points
+of semantic rebinding survive: **key→semantic** (the grammar's terminal rules) and
+**semantic→concrete** (remap, per mode). A composite `Command` carries several
+semantic ids (operator + motion); remap applies to each.
 
-### Terminals and grouping (no class/kind/lexer)
+This is why we **don't** need Zed's grammar/keymap split or its context-flag
+"selectors": Zed threads `vim_mode`/`vim_operator` flags because its grammar is a
+hardcoded enum sitting *next to* a declarative keymap. Ours is declarative and
+encodes positional meaning **directly** — `i` is `textobject` because it's in the
+*operand* production and `action:insert` because it's at *command-start*. Position
+replaces the flag. (Polysemy → grammar position; chords → grammar productions;
+gating of app bindings → the dead-end policy. All grammar.)
 
-A grammar is **productions over key terminals**. There is no lexer, no
-token-type, no command "kind." A key is just a terminal; the grammar's
-*structure* groups keys via **author-defined nonterminals** — e.g. the vim
-preset writes `motion := w | b | $ | …`, `operatorCmd := operator target`. "Which
-keys are motions" is the membership of the `motion` rule — provided by the
-**layered mode-stack keymaps** (§Modes), so it is per-mode and scope-overridable,
-not a flat global registry. There is no separate kind-tagging layer.
+### Terminals: key → semantic id (no class/kind/lexer)
+
+A grammar is **productions over terminals**, and a terminal is **`key → semantic
+id`** (`w → motion.word`, `d → operator.delete`). No lexer, no token-type, no
+command "kind." Keys group by **semantic namespace**: the `motion` group *is* the
+terminals whose id is `motion.*`. The grammar composes by namespace (`operator.*`
+then `motion.*`); grouping falls out of the semantic id, with nothing extra to tag.
 
 Consequences:
 
-- semmap imposes **no command ontology**. `operator`/`motion`/`textobject` are
-  names in the vim preset's grammar; a different preset has different groups.
-- Polysemy is just different bindings in different contexts: `i` is in the
-  `action` group of insert mode's grammar and the `textobject-intro` group at an
-  operator's operand position. At any one position `i` is one thing.
-- Modes that classify keys the same way **share** terminal-group definitions:
-  `normal` and `visual` share `motion`/`operator`; `insert` differs (`w` types).
-- Determinism and conflicts are pure properties of the grammar (below) —
-  FIRST-sets are over **keys**, checkable directly; a remap re-runs the check.
+- semmap imposes **no command ontology** — `operator`/`motion`/`textobject` are
+  semantic-id namespaces a preset's grammar uses; another preset uses others.
+- Polysemy is **grammar position**: `i` is `textobject`/`motion` at the operand
+  position and `action:insert` at command-start — different productions, no flag.
+- **Rebinding is per grammar-position** — exactly vim's `nmap`/`omap` split.
+  Command-start terminals are `nmap`; operand-position terminals are `omap`;
+  insert is `imap`. "Rebind `j`" is therefore *not* global — editing the
+  command-start rule vs. the operand rule is the `nmap`-vs-`omap` distinction,
+  *because the grammar owns what a key means after an operator*. The **grammar
+  structure (composition) is preset-owned and fixed**; the **terminals
+  (key→semantic, per position) are the rebindable layer**. A bare rebind defaults
+  to command-start (like `nnoremap`); the operand context is rebound separately.
+- `normal` and `visual` **share** terminal rules (`w → motion.word` in both);
+  `insert` differs (`w → action:type-w`).
+- Determinism/conflicts are pure grammar properties (below); a rebind re-runs the
+  admissibility check.
 
 ### The grammar (author surface)
 
 Three tiers, so the easy cases are easy and the hard cases stay possible:
 
-1. **Terminals + groups = the registry.** Keys, and the author-defined groups
-   (`motion`, `operator`, …) the grammar references. Group membership is the
-   binding config and is runtime-extensible.
+1. **Terminals = `key → semantic id`.** Keys map to semantic ids (`w →
+   motion.word`); the groups a grammar references (`motion`, `operator`) are just
+   semantic namespaces. This is the rebindable binding config (per position;
+   §Terminals), runtime-extensible.
 2. **Composition = a general, fully-definable *declarative* substrate**, with
    **paradigm helpers as the front door** — `operatorPending(...)`,
    `prefixArg(...)`, `selectionFirst(...)`. A vim preset is `operatorPending()` +
-   its groups, a few lines, no BNF. The helper is what *publishes the selectors*
-   (`operatorPending` publishes `mode=operator`/`operator=d`). Novel paradigms
-   drop to the base matchers.
+   its terminals, a few lines, no BNF. The helper defines the operator+target
+   composition and its operand position. Novel paradigms drop to the base matchers.
 3. **Genuinely-dynamic input = the external sub-session** (§Sub-sessions), not
    the grammar.
 
@@ -126,7 +139,8 @@ behavior uses the external sub-session.
 Base matchers (tier-2 substrate). **Each carries the effect it emits when it
 matches** — syntax-directed:
 
-- `key(k)` / `group(name)` — match a specific key / any key in a named group.
+- `key(k)` / `group(name)` — match a specific key / any terminal in semantic
+  namespace `name` (e.g. `motion`).
 - `literal(name)` — a **wildcard terminal**: match *any* next key and capture it
   as a named argument (`f`/`t`/`r`/`m`/register). (This is "literal capture" —
   it's just a terminal that matches anything; there is no separate "lexer
@@ -304,80 +318,72 @@ Two mechanisms, by who produces the next operand:
 
 ## Modes — the mode stack (HP4 + HP7)
 
-semmap owns a **stack of modes**. A mode is `{ bindings (keymap + remaps),
-optional grammar, handler-refs }`. This unifies what were two separate stacks —
-the binding `ScopeStack` and the per-mode grammar — into one: every active context
-carries *both* its bindings and (optionally) its composition. Prior art: emacs
-**minor modes** (layered keymaps with a precedence order — the right mental model,
-layered not exclusive); Cocoa's **responder chain**; Zed's **key contexts**.
+semmap owns a **stack of modes**. A mode is `{ grammar, remap, handler-refs }` —
+the **grammar is the bindings** (its terminals are the key→semantic map; §The
+grammar is the keymap), `remap` is its semantic→concrete table, handlers are the
+app's functions. This unifies what were two stacks (the binding `ScopeStack` and
+the per-mode grammar): every active context carries its bindings *and* its
+composition as one grammar. Prior art: emacs **minor modes** (layered keymaps with
+precedence — the right mental model); Cocoa's **responder chain**; Zed's **key
+contexts**.
 
-The app drives the stack (push history-search when it opens, pop on close — as
-`useScope` does today) and supplies the handler functions; **semmap owns** the
-stack structure, precedence, selector-gating, and grammar-switching.
+Every mode has a grammar; most app modes (pane, modal) are **trivial** — flat
+`key → action` terminals, no composition. The rich ones (vim-normal) compose. The
+app drives the stack (push history-search when it opens, pop on close — as
+`useScope` does today) and supplies handlers; **semmap owns** the stack,
+precedence, and grammar-switching.
 
-**Two push semantics:**
-- a **base mode** is *replaced* — vim `normal` ↔ `insert` ↔ `visual`;
-- **overlay modes** *push/pop* — history-search, a modal, completion.
+**Two push semantics:** a **base mode** is *replaced* (vim `normal` ↔ `insert` ↔
+`visual`); **overlay modes** *push/pop* (history-search, modal, completion).
 
-Both layer with precedence; the **top-most mode that declares a grammar** is the
-active grammar (most app modes declare none — they only add bindings).
+### Resolution and fallthrough
 
-### Resolution: the grammar sits between the keymap and remap layers
-
-The existing `keymap → remap → handler` scope walk gains the grammar as a middle
-layer:
+Recognition is the active grammar; dispatch is that mode's `remap → handler`:
 
 ```
-key ─▶ mode-stack keymap (layered, selector-gated) → which group the key plays
-       active-grammar.step(grouped-key) → Pending (publish selector) | Resolved
-       Resolved ─▶ mode-stack remap → handler          (per-mode dispatch, unchanged)
+key → top mode's grammar.step → Pending | Resolved(Command) | Unmatched
+      Unmatched at command-start → fall to the next mode's grammar (precedence)
+      Resolved → that mode's remap → handler
 ```
 
-- **Below the grammar — grouping.** The layered per-mode keymaps resolve
-  `key → group` (motion / operator / action / …). This is where **precedence**
-  (ranked candidate list — first live / non-`propagate` wins, subsuming
-  `claimsInput` as "truncate the list below this mode"), **override-as-data**
-  (`null`/`Unbind`, source-tagging user > preset > default), and **selector-
-  gating** live — in operator-pending the keymap puts `i` in `textobject-intro`,
-  in normal in `action`. App bindings are the same mechanism: the history-search
-  mode's keymap puts `C-r` in `action` → the grammar resolves it to
-  `Command{action:…}`.
-- **The grammar composes** the grouped keys and **publishes selectors** the keymap
-  reads on the *next* key — a **one-key lag**, no circularity (`d`'s step sets
-  `operator=delete`; the next key's keymap reads it).
-- **Above the grammar — dispatch** the resolved `Command` through the layered
-  remaps → handlers, unchanged.
-- **Precedence is explicit stack position** — not Zed's depth-of-deepest-match,
-  no `>` tree operator (the stack already encodes the tree; avoids the confusion
-  Zed changed in v0.197).
+- **Fallthrough is only at command-start.** The top mode's grammar tries to begin;
+  `Unmatched` falls to the next mode (stack-order precedence; `Unmatched` at the
+  bottom yields to native input). Once a grammar **begins** (Pending) it owns the
+  rest of the command — **mid-parse dead-ends eat, never fall through** (`d` then
+  an invalid motion cancels; the key doesn't leak to another mode). So a mode's
+  dead-end policy is what gates lower-mode/app bindings: reachable at a fresh start
+  (fallthrough), unreachable mid-command (eat).
+- **Precedence is explicit stack position** — not Zed's depth-of-deepest-match, no
+  `>` tree operator. **Override-as-data** (`null`/`Unbind`, source-tagging
+  user > preset > default) layers the terminal rules. (Subsumes `claimsInput`:
+  truncate the stack below a mode.)
+- App bindings are just terminals in the app mode's grammar (`C-r → action.search`).
 
-### Prefix chords live in the keymap layer
+### Prefix chords are grammar productions
 
-`C-x C-f`, `gg`, `zz` are multi-key sequences resolved *in the keymap layer* via
-`weaveChord` — conflict-checkable at build time (chord-shadow: a prefix shadows a
-flat binding; fan-out: one key bound to two actions) — yielding one grouped action
-the grammar then sees (`3gg` works: the keymap yields `gg → motion`, the grammar
-applies the count). So `g`/`z` namespaces are **keymap chords, not grammar
-productions**; the grammar shrinks to pure composition. `weaveChord` replaces
-quite-app's `applyChordToMode` + its fragile synthesized prefix-ids.
+`C-x C-f`, `gg`, `zz` are **multi-key grammar productions** (`prefix := 'C-x'
+continuation`, `gg := 'g' 'g'`), not a separate keymap mechanism. Their pending
+state lives in the parse stack; their conflict-checking *is* grammar admissibility
+(chord-shadow and fan-out are FIRST/FIRST violations). So `weaveChord` dissolves
+into the grammar + its compile-time check, and `g`/`z` namespaces are ordinary
+productions (`3gg` works: the count production wraps the `gg` motion).
 
 ### Visual = the `selectionFirst` grammar
 
-`normal` and `visual` are modes that **share** keymaps/groups (`w` is a motion in
-both) and differ only in grammar — `operatorPending` vs `selectionFirst` (the
+`normal` and `visual` are modes that **share** terminal rules (`w → motion.word` in
+both) and differ only in composition — `operatorPending` vs `selectionFirst` (the
 selection exists, motions extend it, an operator applies immediately). vim is thus
 multi-paradigm. Transitions are recognizer-driven: `v`/`V`/`C-v` resolve to a
 mode-change command; the **engine owns mode state** and switches the active mode
 *before* the handler walk, emitting the command so the consumer updates its
 (consumer-owned) selection. Dot-repeat replays by recorded **geometry**.
 
-### Snapshot seam
+### Snapshot
 
-State to snapshot = the grammar's `ParseState` + the keymap layer's pending-chord
-state (overlay + 1 s timer). They're at different layers and mutually at-rest
-(mid-`C-x` the keymap has pending state and the grammar's at rest; mid-`dw`
-vice-versa). `peekProcessKey` composes `{ parseState, chordState }` — both plain
-data.
+Because chords are grammar productions, there is no separate keymap-layer state:
+the snapshot is just the grammar's **`ParseState`** (which subsumes
+`EngineSnapshot`'s count/operator *and* the chord-pending state). `peekProcessKey`
+snapshots/restores one plain-data object.
 
 ## Before slice 1: implementation contracts
 
@@ -388,9 +394,9 @@ data.
   cancelled | unmatched | composing`; matcher set excludes
   `subSession`/`externalOperand`; so slice-1 `ParseState` keeps today's
   clear-on-scope-change and carries no survives-scope-mount invariant.
-- **Snapshot across two layers** — `ParseState` subsumes the count/operator part
-  of `EngineSnapshot`; the prefix-chord overlay+timer live in the keymap layer;
-  `peekProcessKey` composes `{ parseState, chordState }` (see §Modes snapshot seam).
+- **Snapshot** — `ParseState` subsumes `EngineSnapshot`'s count/operator *and* the
+  chord-pending state (chords are grammar productions); `peekProcessKey` snapshots
+  one plain-data object. (§Modes.)
 - **Mode-transition ownership** — engine owns mode state, flips before the handler
   walk, emits for the consumer.
 
