@@ -351,8 +351,9 @@ key"; it **cannot report the acceptable-next-set without side effects**, which
 eat-vs-yield and which-key both require. A suspended generator is also opaque
 and non-serializable, which breaks `peekProcessKey` snapshot/restore (already in
 the engine) and dot-repeat. An explicit parse stack is plain data: snapshottable
-(subsumes the existing `EngineSnapshot`), table-testable without UI mocks, and
-serializable for repeat/macros.
+(subsumes `EngineSnapshot`'s count/operator state — the prefix-chord overlay+timer
+move to the binding layer, see §Before slice 1), table-testable without UI mocks,
+and serializable for repeat/macros.
 
 **Decouple the author API from the engine via compile-down.** Authors write the
 declarative substrate combinators (§Grammar tier 2, usually via the paradigm
@@ -478,10 +479,12 @@ The **consumer's entire surface** is:
 Editing obeys the active keymap, so a vim user gets vim editing in `/` and an
 emacs user gets emacs editing, for free and consistently.
 
-#### Live highlighting (incsearch) — one-way, via existing idioms
+#### Live highlighting (incsearch) — one-way
 The consumer must be able to highlight matches as the pattern is typed
-(including operator-aware preview for `d/foo`). This needs **no new machinery** —
-it rides the existing `subscribe`/`getState()` pattern:
+(including operator-aware preview for `d/foo`). It rides the `subscribe`/
+`getState()` pattern, but is **not** free: it requires adding `subInput` to
+`EngineState`, changing `notify()`'s dedupe key (today it short-circuits on the
+`pendingDisplay` string), and `getState()`'s cache. (Parked with HP3.) The shape:
 
 - Surface sub-input on the snapshot:
   `EngineState.subInput = { kind, direction, buffer, command? }`, present only
@@ -592,15 +595,105 @@ coexist cleanly.
 - The "grammar reducers" idea is this spec's small case: a reducer = a one-rule
   accumulator grammar. No separate mechanism needed.
 
+## Before slice 1: implementation contracts
+
+The design is essay-coherent, but these contracts must be pinned before code
+(final red-team). They are slice-1-blocking unless noted.
+
+### `acceptableNext` — first-set closure over the parse stack
+
+Returns the first-set **closure over the runtime parse stack**, not one node. From
+the top frame's current matcher, include its first-set; if that matcher is
+skippable (`optional`/`repeat`/already-satisfied), fold in FOLLOW (the next matcher
+in the frame, and up through parent frames if those are skippable too). Predictive
+first/follow evaluated over the live stack (small depth).
+
+```ts
+acceptableNext(state): {
+  demand: { kind: 'symbol'; classes: ReadonlySet<Class> } | { kind: 'literal' }
+  whichKey: ReadonlyArray<{ key: KeyStr; class: Class; id: string; label: string }>
+  canBegin: boolean   // fresh start → a miss yields; else a miss eats (innermost-frame policy)
+}
+```
+
+**Demand is singular** — `symbol(classes)` XOR `literal`, never mixed, because
+alternatives at one position never mix registry-lookup with raw-capture (forbid
+`choice(symbol, literal)`; vim never needs it — `f`-then-char is two positions).
+`classes` = the union of first-classes across the closure.
+
+**Three-layer static/live split** (this is the precomputed-vs-live answer):
+
+1. *Structure — static, compiled.* Per-position first/follow **of classes** +
+   the FOLLOW closure. This is all "precompute first/next-sets" means: class-level
+   only, never key-level.
+2. *Key→class membership — live.* Joined against the remappable registry at query
+   time.
+3. *Key-identity guards — live.* `0`-count and `doubledSelf` are
+   **`keyGuard(pred, production)`** matchers, `pred` a pure boolean over
+   `(parseState, key)` (e.g. `sameAsPendingOperator`→doubling,
+   `countInProgress`→the `0` rule). The compiled table marks guarded positions;
+   the interpreter evaluates the guard live. A guard *reads* parse state and never
+   consumes input, so it is **not** the opaque transition-callback the recognizer
+   forbids. (Open: closed named-predicate set vs. arbitrary pure predicate — lean
+   named set for serializability.)
+
+So the honest contract is **`acceptableNext` is pure over `(parseState,
+registry-snapshot)`** — a pure function, not a precomputed constant.
+
+Worked traces: *fresh normal start* → FIRST(command), `0` is the col-0 **motion**
+(`countInProgress` false); *operator-pending* → `{pending-op-key→doubling, digits,
+motion, i/a→textobject-scope, f/t, / ?}`, unbound key → eat; *inside count* → `0`
+is now a **digit** (`countInProgress` true), `d` continues to the command;
+*after `i`* → FIRST(`symbol(textobject-id)`); *mid-`f`* → `demand=literal`, Escape →
+cancel.
+
+### `Command` → dispatch (slice-1 change)
+
+A resolved `Command` dispatches by routing its **primary id** (the operator id;
+else the action / bare-motion id) through the existing per-scope `remap → handler`
+walk, with the **structured `Command` as the handler args**. So `ActionArgs` grows
+from `{count?, motion?}` to `{register?, operator?, motion?:{id,arg,count,…},
+textObject?, linewise?, count?}`, and `HandlerFn` receives it. Since slice 1 ships
+text objects + `f`/`t` args, this `ActionArgs`/`HandlerFn` change is **slice 1**,
+not later.
+
+### Parked HP3 is *out of* the slice-1 type surface
+
+Slice-1 `StepResult` = `resolved | pending | cancelled | unmatched | composing` —
+**no `Suspended`**. The slice-1 matcher set **excludes** `subSession` /
+`externalOperand`. So slice-1 `ParseState` carries **no survives-scope-mount
+invariant** and keeps today's clear-on-scope-change behavior
+(`onKeymapSourceChanged`). The held-frame lifetime is designed when HP3 is unparked
+(its own slice), never bolted onto slice 1.
+
+### Snapshot across two layers
+
+`ParseState` subsumes the **count/operator/universalArg** part of `EngineSnapshot`;
+the **prefix-chord overlay + 1 s timer** move to the **binding layer** (they're
+keymap structure, §Scope/binding). `peekProcessKey` / snapshot-restore composes
+both: `snapshot = { parseState, bindingState }`.
+
+### Mode-transition ownership
+
+The **engine owns mode state** and flips the active `{keymap, grammar}` when it
+*resolves* a mode-change command — **before** the handler walk — and also emits the
+command so the consumer updates its selection/UI. So: engine flips mode → emits →
+consumer handles (UI/selection side-effects). Mode = engine state; selection =
+consumer state; no ambiguity.
+
 ## Staging
 
 Land in slices, each shippable:
 
-1. **Core engine.** Compile-down + explicit-step recognizer + `acceptableNext` +
-   `Command` output. Port count, operator + count + motion (multiplied), operator
-   doubling, text objects, literal-capture motions (`f`/`t`). Move vim/emacs
-   grammar out of the core into presets. **Wrap** `EngineResult` (additive
-   `command?`), don't replace (HP5).
+1. **Core (split for bisectability):**
+   - **1a.** Recognizer (explicit step + serializable `ParseState`) +
+     `acceptableNext` closure + `Command` output + `ActionArgs`/`HandlerFn` growth
+     + **wrap** `EngineResult` (additive `command?`). Port `count` + simple
+     actions + the emacs universal-arg grammar.
+   - **1b.** `operator` + `motion` + multiplied counts + doubling (`keyGuard`).
+   - **1c.** Text objects (`choice` + selector-gating) + literal capture
+     (`f`/`t` + the `literal` matcher + dead-end-cancel).
+   Move vim/emacs grammar out of the core into presets across 1a–1c.
 2. **Namespaces & arguments.** `g`/`z` prefixes, registers `"`, marks `m`/`` ` ``.
 3. **Search / `d/foo` composition (HP3 — parked).** App-owned session with a
    persistent parse stack across it; resolved value → `motion.arg`. Unpark and
