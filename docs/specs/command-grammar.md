@@ -114,57 +114,51 @@ Consequences:
 - Determinism/conflicts are pure grammar properties (below); a rebind re-runs the
   admissibility check.
 
-### The grammar (author surface)
+### The grammar — core vs. preset/helper
 
-Three tiers, so the easy cases are easy and the hard cases stay possible:
+Two layers, sharply separated:
 
-1. **Terminals = `key → semantic id`.** Keys map to semantic ids (`w →
-   motion.word`); the groups a grammar references (`motion`, `operator`) are just
-   semantic namespaces. This is the rebindable binding config (per position;
-   §Terminals), runtime-extensible.
-2. **Composition = a general, fully-definable *declarative* substrate**, with
-   **paradigm helpers as the front door** — `operatorPending(...)`,
-   `prefixArg(...)`, `selectionFirst(...)`. A vim preset is `operatorPending()` +
-   its terminals, a few lines, no BNF. The helper defines the operator+target
-   composition and its operand position. Novel paradigms drop to the base matchers.
-3. **Genuinely-dynamic input = the external sub-session** (§Sub-sessions), not
-   the grammar.
-
-**Constraint (load-bearing): the substrate stays declarative — no arbitrary
-imperative functions.** Conflict-detection and which-key exist *because* the
-grammar is statically walkable. "Fully definable" means any declarative grammar,
-not opaque transition callbacks (the generator problem). Imperative/async
-behavior uses the external sub-session.
-
-Base matchers (tier-2 substrate). **Each carries the effect it emits when it
-matches** — syntax-directed:
+**semmap core = the recognizer + base combinators.** Neutral; no editor concepts.
+Each terminal emits a semantic id; each matcher carries the effect it emits when
+it matches (syntax-directed):
 
 - `key(k)` / `group(name)` — match a specific key / any terminal in semantic
   namespace `name` (e.g. `motion`).
 - `literal(name)` — a **wildcard terminal**: match *any* next key and capture it
-  as a named argument (`f`/`t`/`r`/`m`/register). (This is "literal capture" —
-  it's just a terminal that matches anything; there is no separate "lexer
-  demand.")
-- `count` — accumulate a leading number (emits onto the command's count).
-- `keyGuard(pred, production)` — a production gated by a **pure boolean over
-  `(parseState, key)`** drawn from finite-domain registers (e.g.
-  `sameAsPendingOperator`→doubling, `countInProgress`→the `0` rule). The guard
-  *reads* parse state, never consumes input.
+  as a named argument (`f`/`t`/`r`/`m`/register). (No "lexer demand" — it's just a
+  terminal that matches anything.)
+- `count` — accumulate a leading number onto the command.
 - `ref(rule)`, `choice(...)`, `optional(...)`, `repeat(...)`, `seq(...)`.
 
-Each matcher may set `onDeadEnd: 'eat' | 'yield' | 'resolve'` to override the
-default (below) for the rare case it's wrong.
+A matcher may set `onDeadEnd: 'eat' | 'yield' | 'resolve'` to override the default.
+**There are no state-gated matchers** — matching is purely structural (position +
+key); parse-state registers are *output-only* (§Recognizer class).
 
-Vim normal mode, sketched (illustrative — `searchMotion` is HP3-parked):
+**Preset/helper layer = everything editor-specific**, built from those combinators.
+The paradigm helpers — `operatorPending()`, `prefixArg()`, `selectionFirst()` —
+live **here, not in the core** (semmap may *ship* them next to the vim/emacs presets
+as a convenience, but they're a layer on top). A vim preset is `operatorPending()`
++ its terminals, a few lines. The helper **generates** the composition grammar from
+the registered set — including **operator doubling**: for each operator it emits a
+structural `key(opKey) → linewise` alternative at the operand position, so doubling
+follows rebinding (rebind delete to `x` → the helper re-emits `key('x')`). "Which
+key is the same" is the helper's loop, run at grammar-build time; the core never
+sees "doubling," only the generated `key(...)` productions.
+
+Constraint (load-bearing): the grammar stays **declarative** — no arbitrary
+imperative functions. Conflict-detection and which-key exist *because* the grammar
+is statically walkable. Imperative/async behavior uses the external sub-session.
+
+Vim normal mode, sketched (illustrative — `searchMotion` is HP3-parked; the
+per-operator `key(opKey)→linewise` doubling alternatives are helper-generated):
 
 ```
 command     := register? count? ( operatorCmd | namespaced | motion | action )
-operatorCmd := operator ( doubledSelf | count? target )
+operatorCmd := operator ( count? target )
 target      := motion | textobject | literalMotion | searchMotion
 literalMotion := ('f'|'t'|'F'|'T') literal(char)
 textobject  := ('i'|'a') group(textobject-id)
 namespaced  := ('g'|'z') group(namespaced-id)
-doubledSelf := keyGuard(sameAsPendingOperator, → linewise)
 ```
 
 ### The recognizer: `step` is the core
@@ -229,29 +223,27 @@ zero lookahead**:
 - **pushdown** — the parse stack carries the shallow command nesting.
 
 State registers (operator, count, register, captured literals, last-find) are a
-**forward accumulator**. A `keyGuard` affecting control flow reads only
-**finite-domain** registers, so the guarded grammar **expands to a finite
-ordinary grammar** — guards add no power. Unbounded values (count value, captured
-char, search pattern) are **data attributes synthesized onto the `Command`; they
-never gate a production.**
+**forward, output-only accumulator** — synthesized onto the `Command` and **never
+read to gate a match.** Matching is purely structural (parse position + key);
+there are **no state-gated matchers, no guards.** Vim's two seemingly-stateful
+rules need no state read: counts by greedy `repeat`, operator doubling by the
+per-operator structural productions the preset generates (§The grammar). So the
+recognizer is a **plain deterministic pushdown recognizer**, no augmentation.
 
-**Admissibility — compile-time, rejectable.** With every `keyGuard` expanded over
-its finite domain, a grammar is admissible iff, over its **key** terminals:
+**Admissibility — compile-time, rejectable.** Over the **key** terminals, a
+grammar is admissible iff:
 
-1. **FIRST/FIRST disjoint** — alternatives at every choice share no first-key.
-2. **FIRST/FOLLOW disjoint** — for every nullable element (`count?`, `optional`,
-   `repeat`), FIRST ∩ FOLLOW = ∅.
+1. **FIRST/FIRST disjoint** — alternatives at every choice share no first-key,
+   *except* a greedy `repeat` may share first-keys with its follow-set, resolved by
+   **continue-over-exit** (this is how `count`'s `[0-9]*` claims `0` over the
+   `0`-motion). This is the one defined precedence; everything else is disjoint.
+2. **FIRST/FOLLOW disjoint** for every nullable element (`count?`, `optional`).
 3. **No left recursion, no nullable cycles** (real-time).
-4. **Guards finite-domain and mutually exclusive** at a shared choice.
-5. **No unbounded value gates a production.**
 
-Because FIRST-sets are over **keys**, determinism is a pure property of the
-grammar: a key matches at most one terminal at any position, so the recognizer
-never buffers, peeks, or backtracks. **A remap is just editing group membership,
-which re-runs this check.** There is no class-vs-key gap and no
-remappable-registry hazard. (The lone deliberate overlap is `0`: bound in the
-`motion` group, claimed mid-count by the `countInProgress` guard — one explicit
-precedence, not a general one.)
+Determinism is a pure property of the grammar: a key selects at most one
+transition at any position, so the recognizer never buffers, peeks, or backtracks.
+**A rebind is just editing terminal rules, which re-runs this check.** No
+class-vs-key gap, no remappable-registry hazard, no guards.
 
 ### Resolved command (output)
 
@@ -406,7 +398,8 @@ snapshots/restores one plain-data object.
    - **1a.** Recognizer (`step` + serializable `ParseState`) + `Command` output +
      `ActionArgs`/`HandlerFn` growth + **wrap** `EngineResult`. Port `count` +
      simple actions + the emacs universal-arg grammar.
-   - **1b.** `operator` + `motion` + multiplied counts + doubling (`keyGuard`).
+   - **1b.** `operator` + `motion` + multiplied counts + doubling (preset-generated
+     per-operator `key(opKey)→linewise` productions).
    - **1c.** Text objects (`choice` over groups) + literal capture
      (`f`/`t` wildcard terminal + dead-end-cancel).
    Move vim/emacs grammar out of the core into presets across 1a–1c.
@@ -422,6 +415,3 @@ snapshots/restores one plain-data object.
 
 1. **HP3 held-frame lifetime** (parked) — the hardest remaining problem; see
    §Sub-sessions.
-2. **`keyGuard` predicate surface** — a closed named set vs. arbitrary
-   finite-domain pure predicates (lean named set for serializability; admissibility
-   forces finite domains either way).
