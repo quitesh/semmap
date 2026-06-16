@@ -3,9 +3,7 @@
 Semantic keystroke routing engine: keymap → semantic action → per-scope remap → handler.
 
 `semmap` (SEMantic MAPping engine) is a pure-TypeScript library for layered,
-scope-aware keystroke routing with vim/emacs grammar built in. It is a routing
-core — not a UI framework. React glue, focus management, action catalogs, YAML
-config, and per-app dispatch policy are all consumer concerns.
+scope-aware keystroke routing with vim/emacs grammar built in.
 
 ## Install
 
